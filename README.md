@@ -31,7 +31,7 @@ If you have another OS, you can refer to [this](https://github.com/ggml-org/llam
 2) Navigate to the **ComfyUI\models\gguf** folder and place your chosen GGUF LLM file there.
 
 For example you can go for this (Instruct model):
-- https://huggingface.co/Qwen/Qwen3-4B-GGUF/tree/main
+- https://huggingface.co/Qwen/Qwen3-4B-GGUF
 
 Or something like this (thinking model):
 -  https://huggingface.co/unsloth/Qwen3-4B-Thinking-2507-GGUF
