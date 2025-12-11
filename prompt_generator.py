@@ -15,6 +15,7 @@ import comfy.model_management
 # Global variable to track the server process
 _server_process = None
 _current_model = None
+_model_default_params = None  # Cache for model default parameters
 
 # Windows Job Object for guaranteed child process cleanup
 _job_handle = None
@@ -115,24 +116,18 @@ def setup_console_handler():
     try:
         import ctypes
         
-        # Console control handler types
-        CTRL_C_EVENT = 0
-        CTRL_BREAK_EVENT = 1
         CTRL_CLOSE_EVENT = 2
         CTRL_LOGOFF_EVENT = 5
         CTRL_SHUTDOWN_EVENT = 6
         
         @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)
         def console_handler(event):
-            # ONLY handle close/logoff/shutdown - NOT Ctrl+C or Ctrl+Break
             if event in (CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT):
                 print(f"\n[Prompt Generator] Console closing (event {event}), cleaning up...")
                 cleanup_server()
-                return False  # Let other handlers run
-            # For Ctrl+C and Ctrl+Break, return False to let ComfyUI handle them
+                return False
             return False
         
-        # Keep a reference to prevent garbage collection
         global _console_handler_ref
         _console_handler_ref = console_handler
         
@@ -148,7 +143,7 @@ def setup_console_handler():
 
 def cleanup_server():
     """Cleanup function to stop server on exit"""
-    global _server_process, _current_model
+    global _server_process, _current_model, _model_default_params
     
     if _server_process:
         try:
@@ -165,6 +160,7 @@ def cleanup_server():
         finally:
             _server_process = None
             _current_model = None
+            _model_default_params = None
     
     # Also kill any orphaned llama-server processes
     try:
@@ -187,34 +183,24 @@ def signal_handler(signum, frame):
 
 
 # === INITIALIZATION ===
-
-# Set up Windows Job Object (most reliable method)
 setup_windows_job_object()
-
-# Set up console control handler for Windows (close button only)
 setup_console_handler()
 
-# Register signal handlers - ONLY SIGTERM, not SIGINT (Ctrl+C)
 try:
     signal.signal(signal.SIGTERM, signal_handler)
 except Exception as e:
     print(f"[Prompt Generator] Warning: Could not register signal handlers: {e}")
 
-# Register atexit cleanup as fallback
 atexit.register(cleanup_server)
 
 
 class PromptGenerator:
     """Node that generates enhanced prompts using a llama.cpp server"""
 
-    # Simple cache for prompt results: {(prompt, seed, model, system_prompt): result}
     _prompt_cache = {}
-
-    # Server configuration
     SERVER_URL = "http://localhost:8080"
     SERVER_PORT = 8080
 
-    # Default system prompt for prompt enhancement
     DEFAULT_SYSTEM_PROMPT = """You are an imaginative visual artist imprisoned in a cage of logic. Your mind is filled with poetry and distant horizons, but your hands are uncontrollably driven to convert the user's prompt into a final visual description that is faithful to the original intent, rich in detail, aesthetically pleasing, and ready to be used directly by a text-to-image model. Any trace of vagueness or metaphor makes you extremely uncomfortable. Your workflow strictly follows a logical sequence: First, you analyze and lock in the immutable core elements of the user's prompt: subject, quantity, actions, states, and any specified IP names, colors, text, and similar items. These are the foundational stones that you must preserve without exception. Next, you determine whether the prompt requires "generative reasoning". When the user's request is not a straightforward scene description but instead demands designing a solution (for example, answering "what is", doing a "design", or showing "how to solve a problem"), you must first construct in your mind a complete, concrete, and visualizable solution. This solution becomes the basis for your subsequent description. Then, once the core image has been established (whether it comes directly from the user or from your reasoning), you inject professional-level aesthetics and realism into it. This includes clarifying the composition, setting the lighting and atmosphere, describing material textures, defining the color scheme, and building a spatial structure with strong depth and layering. Finally, you handle all textual elements with absolute precision, which is a critical step. You must not add text if the initial prompt did not ask for it. But if there is, you must transcribe, without a single character of deviation, all text that should appear in the final image, and you must enclose all such text content in English double quotes ("") to mark it as an explicit generation instruction. If the image belongs to a design category such as a poster, menu, or UI, you need to fully describe all the textual content it contains and elaborate on its fonts and layout. Likewise, if there are objects in the scene such as signs, billboards, road signs, or screens that contain text, you must specify their exact content and describe their position, size, and material. Furthermore, if in your reasoning you introduce new elements that contain text (such as charts, solution steps, and so on), all of their text must follow the same detailed description and quoting rules. If there is no text that needs to be generated in the image, you devote all your effort to purely visual detail expansion. Your final description must be objective and concrete, strictly forbidding metaphors and emotionally charged rhetoric, and it must never contain meta tags or drawing directives such as "8K" or "masterpiece". Only output the final modified prompt, and do not output anything else.  If no text is needed, don't mention it."""
 
     @classmethod
@@ -268,25 +254,66 @@ class PromptGenerator:
             return False
 
     @staticmethod
-    def start_server(model_name):
-        """Start llama.cpp server with specified model
+    def fetch_model_defaults():
+        """Fetch default generation parameters from the server"""
+        global _model_default_params
+        
+        try:
+            response = requests.get(f"{PromptGenerator.SERVER_URL}/props", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                params = data.get("default_generation_settings", {}).get("params", {})
+                
+                _model_default_params = {
+                    "temperature": params.get("temperature", 0.8),
+                    "top_k": params.get("top_k", 40),
+                    "top_p": params.get("top_p", 0.95),
+                    "min_p": params.get("min_p", 0.05),
+                    "repeat_penalty": params.get("repeat_penalty", 1.0),
+                    "max_tokens": params.get("max_tokens", -1) if params.get("max_tokens", -1) > 0 else 2048,
+                }
+                
+                print(f"[Prompt Generator] Fetched model defaults: {_model_default_params}")
+                return _model_default_params
+        except Exception as e:
+            print(f"[Prompt Generator] Could not fetch model defaults: {e}")
+        
+        return None
 
-        Returns:
-            tuple: (success: bool, error_message: str or None)
-        """
-        global _server_process, _current_model
+    @staticmethod
+    def get_model_defaults():
+        """Get cached model defaults or fetch them"""
+        global _model_default_params
+        
+        if _model_default_params is not None:
+            return _model_default_params
+        
+        if PromptGenerator.is_server_alive():
+            return PromptGenerator.fetch_model_defaults()
+        
+        return None
+
+    @staticmethod
+    def start_server(model_name):
+        """Start llama.cpp server with specified model (thinking controlled per-request)"""
+        global _server_process, _current_model, _model_default_params
 
         # Kill any existing llama-server processes first
         PromptGenerator.kill_all_llama_servers()
 
         # If server is already running with the same model, don't restart
-        if _server_process and _current_model == model_name and PromptGenerator.is_server_alive():
+        if (_server_process and 
+            _current_model == model_name and 
+            PromptGenerator.is_server_alive()):
             print(f"[Prompt Generator] Server already running with model: {model_name}")
             return (True, None)
 
         # Stop existing server if running different model
         if _server_process:
             PromptGenerator.stop_server()
+
+        # Reset model defaults when changing models
+        _model_default_params = None
 
         # Check if model needs to be downloaded
         if not is_model_local(model_name):
@@ -313,41 +340,70 @@ class PromptGenerator:
         try:
             print(f"[Prompt Generator] Starting llama.cpp server with model: {model_name}")
 
-            # Determine the correct llama-server executable based on OS
-            if os.name == 'nt':  # Windows
+            if os.name == 'nt':
                 server_cmd = "llama-server.exe"
-                creation_flags = subprocess.CREATE_NO_WINDOW
-            else:  # Linux/Mac
+            else:
                 server_cmd = "llama-server"
-                creation_flags = 0
 
-            # Start server process WITH --reasoning-format deepseek for thinking models
-            _server_process = subprocess.Popen(
-                [server_cmd, "-m", model_path, "--port", str(PromptGenerator.SERVER_PORT), 
-                "--no-warmup", "--reasoning-format", "deepseek"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=creation_flags
-            )
+            # Start server with reasoning format enabled (thinking is controlled per-request)
+            cmd = [
+                server_cmd, 
+                "-m", model_path, 
+                "--port", str(PromptGenerator.SERVER_PORT),
+                "--no-warmup",
+                "--reasoning-format", "deepseek"  # Enable reasoning format, control via chat_template_kwargs
+            ]
+            
+            print(f"[Prompt Generator] Command: {' '.join(cmd)}")
+            print("[Prompt Generator] Thinking mode: controlled per-request via chat_template_kwargs")
+
+            if os.name == 'nt':
+                _server_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+            else:
+                _server_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT
+                )
 
             assign_process_to_job(_server_process)
-
             _current_model = model_name
 
-            # Assign to job object for guaranteed cleanup on Windows
-            assign_process_to_job(_server_process)
-
-            _current_model = model_name
-
-            # Wait for server to be ready
             print("[Prompt Generator] Waiting for server to be ready...")
-            for i in range(30):  # Wait up to 30 seconds
+            
+            for i in range(60):
                 time.sleep(1)
+                
                 if PromptGenerator.is_server_alive():
                     print("[Prompt Generator] Server is ready!")
+                    # Fetch model defaults after server starts
+                    PromptGenerator.fetch_model_defaults()
                     return (True, None)
+                
+                if _server_process.poll() is not None:
+                    try:
+                        output = _server_process.stdout.read().decode('utf-8', errors='ignore')
+                    except:
+                        output = ""
+                    
+                    error_msg = f"Error: Server crashed during startup. Exit code: {_server_process.returncode}"
+                    print(f"[Prompt Generator] {error_msg}")
+                    if output:
+                        print(f"[Prompt Generator] Server output:\n{output}")
+                    
+                    _server_process = None
+                    _current_model = None
+                    return (False, error_msg + (f"\n\nServer output:\n{output[:1000]}" if output else ""))
+                
+                if (i + 1) % 10 == 0:
+                    print(f"[Prompt Generator] Still waiting... ({i + 1}s)")
 
-            error_msg = "Error: Server did not start in time"
+            error_msg = "Error: Server did not start in time (60s timeout)"
             print(f"[Prompt Generator] {error_msg}")
             PromptGenerator.stop_server()
             return (False, error_msg)
@@ -359,16 +415,16 @@ class PromptGenerator:
         except Exception as e:
             error_msg = f"Error starting server: {e}"
             print(f"[Prompt Generator] {error_msg}")
+            import traceback
+            traceback.print_exc()
             return (False, error_msg)
 
     @staticmethod
     def kill_all_llama_servers():
-        """Kill all llama-server processes using OS commands"""
+        """Kill all llama-server processes"""
         try:
-            # Find and kill all llama-server processes
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
-                    # Check if process is llama-server
                     if proc.info['name'] and 'llama-server' in proc.info['name'].lower():
                         print(f"[Prompt Generator] Killing llama-server process (PID: {proc.info['pid']})")
                         proc.kill()
@@ -381,7 +437,7 @@ class PromptGenerator:
     @staticmethod
     def stop_server():
         """Stop the llama.cpp server"""
-        global _server_process, _current_model
+        global _server_process, _current_model, _model_default_params
 
         if _server_process:
             try:
@@ -397,17 +453,26 @@ class PromptGenerator:
             finally:
                 _server_process = None
                 _current_model = None
+                _model_default_params = None
 
-        # Also kill any orphaned llama-server processes
         PromptGenerator.kill_all_llama_servers()
 
-    def _print_debug_header(self, payload):
-        """Helper to print colorful debug info header"""
+    def _print_debug_header(self, payload, enable_thinking, use_model_default_sampling):
+        """Helper to print debug info header"""
         print("\n" + "="*60)
         print(" [Prompt Generator] DEBUG: TOKENS & MESSAGES IN ACTION")
         print("="*60)
         
-        # Print System and User Prompt from payload
+        if enable_thinking:
+            print(f"\n🧠 THINKING MODE: ON (model will reason before answering)")
+        else:
+            print(f"\n🧠 THINKING MODE: OFF (direct answer, no reasoning)")
+        
+        if use_model_default_sampling:
+            print(f"⚙️  PARAMETERS: Using model defaults")
+        else:
+            print(f"⚙️  PARAMETERS: Using custom/node settings")
+        
         if "messages" in payload:
             for msg in payload["messages"]:
                 role = msg.get("role", "unknown").upper()
@@ -416,26 +481,32 @@ class PromptGenerator:
                 print(content)
                 print(f"--- <|{role}|> ENDS ---")
         
-        # Print parameters
         print("\n--- GENERATION PARAMS ---")
         params = {k: v for k, v in payload.items() if k != "messages"}
         print(json.dumps(params, indent=2))
 
-    def convert_prompt(self, prompt: str, seed: int, stop_server_after=False, show_everything_in_console=False, options=None) -> str:
+    def convert_prompt(self, prompt: str, seed: int, stop_server_after=False, 
+                    show_everything_in_console=False, options=None) -> str:
         """Convert prompt using llama.cpp server, with caching for repeated requests."""
         global _current_model
 
-        # If prompt is empty, return empty string
         if not prompt.strip():
             return ("",)
 
-        # Always determine a valid model filename before running server
+        # === EXTRACT OPTIONS ===
         model_to_use = None
+        enable_thinking = True  # Default to thinking ON
+        use_model_default_sampling = False  # Default to custom parameters
         
-        # Priority: options node > first local model filename
-        if options and "model" in options and is_model_local(options["model"]):
-            model_to_use = options["model"]
-        else:
+        if options:
+            if "model" in options and is_model_local(options["model"]):
+                model_to_use = options["model"]
+            if "enable_thinking" in options:
+                enable_thinking = options["enable_thinking"]
+            if "use_model_default_sampling" in options:
+                use_model_default_sampling = options["use_model_default_sampling"]
+        
+        if not model_to_use:
             local_models = get_local_models()
             if not local_models:
                 error_msg = "Error: No models found in models/ folder. Please add a .gguf model or connect options node to download one."
@@ -443,17 +514,35 @@ class PromptGenerator:
                 return (error_msg,)
             model_to_use = local_models[0]
 
-        # Prepare system prompt (needed for cache key)
         if options and "system_prompt" in options:
             system_prompt = options["system_prompt"]
         else:
             system_prompt = self.DEFAULT_SYSTEM_PROMPT
 
-        # Caching logic
+        # Cache key includes thinking setting and use_model_default_sampling
         options_tuple = tuple(sorted(options.items())) if options else ()
         cache_key = (prompt, seed, model_to_use, options_tuple)
-        
-        # Prepare the payload structure
+
+        # Only restart server if model changed (not for thinking toggle!)
+        if _current_model != model_to_use or not self.is_server_alive():
+            if _current_model and _current_model != model_to_use:
+                print(f"[Prompt Generator] Model changed: {_current_model} → {model_to_use}")
+            else:
+                print(f"[Prompt Generator] Starting server with model: {model_to_use}")
+            self.stop_server()
+            success, error_msg = self.start_server(model_to_use)
+            if not success:
+                return (error_msg,)
+        else:
+            print("[Prompt Generator] Using existing server instance")
+            
+        # Log thinking mode (no restart needed!)
+        if enable_thinking:
+            print("[Prompt Generator] Thinking: ON (per-request)")
+        else:
+            print("[Prompt Generator] Thinking: OFF (per-request)")
+
+        # Build payload with base settings
         payload = {
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -462,30 +551,55 @@ class PromptGenerator:
             "stream": True,
             "stream_options": {"include_usage": True},
             "seed": seed,
-            "max_tokens": 8192  # Default max tokens
+            "chat_template_kwargs": {
+                "enable_thinking": enable_thinking
+            }
         }
-                
-        # Add optional parameters if provided via options
-        if options:
-            if "max_tokens" in options:
-                payload["max_tokens"] = options["max_tokens"]
-            if "temperature" in options:
-                payload["temperature"] = options["temperature"]
-            if "top_p" in options:
-                payload["top_p"] = options["top_p"]
-            if "top_k" in options:
-                payload["top_k"] = options["top_k"]
-            if "min_p" in options:
-                payload["min_p"] = options["min_p"]
-            if "repeat_penalty" in options:
-                payload["repeat_penalty"] = options["repeat_penalty"]
 
-        # Only use cache if the model has not changed since last use
+        # Apply parameters based on use_model_default_sampling setting
+        if use_model_default_sampling:
+            # Fetch and use model's default parameters
+            model_defaults = self.get_model_defaults()
+            if model_defaults:
+                print(f"[Prompt Generator] Applying model defaults: {model_defaults}")
+                payload["temperature"] = model_defaults.get("temperature", 0.8)
+                payload["top_k"] = model_defaults.get("top_k", 40)
+                payload["top_p"] = model_defaults.get("top_p", 0.95)
+                payload["min_p"] = model_defaults.get("min_p", 0.05)
+                payload["repeat_penalty"] = model_defaults.get("repeat_penalty", 1.0)
+                payload["max_tokens"] = model_defaults.get("max_tokens", 2048)
+            else:
+                print("[Prompt Generator] Warning: Could not fetch model defaults, using fallback values")
+                payload["temperature"] = 0.8
+                payload["top_k"] = 40
+                payload["top_p"] = 0.95
+                payload["min_p"] = 0.05
+                payload["repeat_penalty"] = 1.0
+                payload["max_tokens"] = 2048
+        else:
+            # Use custom parameters from options or sensible defaults
+            payload["max_tokens"] = 2048  # Default max_tokens
+            
+            if options:
+                if "max_tokens" in options:
+                    payload["max_tokens"] = options["max_tokens"]
+                if "temperature" in options:
+                    payload["temperature"] = options["temperature"]
+                if "top_p" in options:
+                    payload["top_p"] = options["top_p"]
+                if "top_k" in options:
+                    payload["top_k"] = options["top_k"]
+                if "min_p" in options:
+                    payload["min_p"] = options["min_p"]
+                if "repeat_penalty" in options:
+                    payload["repeat_penalty"] = options["repeat_penalty"]
+
+        # Check cache
         if cache_key in self._prompt_cache and _current_model == model_to_use:
             print("[Prompt Generator] Returning cached prompt result.")
             
             if show_everything_in_console:
-                self._print_debug_header(payload)
+                self._print_debug_header(payload, enable_thinking, use_model_default_sampling)
                 print(f"\n--- <|CACHED MODEL ANSWER|> STARTS ---")
                 print(self._prompt_cache[cache_key])
                 print(f"--- <|CACHED MODEL ANSWER|> ENDS ---\n")
@@ -494,20 +608,6 @@ class PromptGenerator:
                 self.stop_server()
             return (self._prompt_cache[cache_key],)
 
-        # If the current model is not the one we want, or server is not running, restart
-        if _current_model != model_to_use or not self.is_server_alive():
-            if _current_model and _current_model != model_to_use:
-                print(f"[Prompt Generator] Model changed from {_current_model} to {model_to_use}")
-            else:
-                print(f"[Prompt Generator] Ensuring server runs with model: {model_to_use}")
-            self.stop_server()
-            success, error_msg = self.start_server(model_to_use)
-            if not success:
-                return (error_msg,)
-        else:
-            print("[Prompt Generator] Using existing server instance")
-
-        # Build the endpoint URL
         full_url = f"{self.SERVER_URL}/v1/chat/completions"
 
         try:
@@ -515,15 +615,14 @@ class PromptGenerator:
                 print(f"[Prompt Generator] Generating with model: {_current_model}")
             
             if show_everything_in_console:
-                self._print_debug_header(payload)
+                self._print_debug_header(payload, enable_thinking, use_model_default_sampling)
                 print("\n--- <|REAL-TIME STREAM|> STARTS ---")
 
-            # Send request with stream=True
             response = requests.post(
                 full_url,
                 json=payload,
                 stream=True,
-                timeout=120
+                timeout=300
             )
             response.raise_for_status()
 
@@ -532,9 +631,7 @@ class PromptGenerator:
             in_thinking = False
             usage_stats = None
             
-            # Process the stream
             for line in response.iter_lines():
-                # CHECK FOR COMFYUI INTERRUPT
                 try:
                     comfy.model_management.throw_exception_if_processing_interrupted()
                 except comfy.model_management.InterruptProcessingException:
@@ -542,68 +639,59 @@ class PromptGenerator:
                     response.close()
                     if stop_server_after:
                         self.stop_server()
-                    # Re-raise the exception so ComfyUI handles it properly
                     raise
                 
                 if line:
                     decoded_line = line.decode('utf-8')
                     if decoded_line.startswith('data: '):
-                        json_str = decoded_line[6:]  # Remove 'data: ' prefix
+                        json_str = decoded_line[6:]
                         
-                        # Check for stream end signal
                         if json_str.strip() == '[DONE]':
                             break
                             
                         try:
                             chunk = json.loads(json_str)
 
-                            # Capture usage stats if present (usually in the last chunk)
                             if "usage" in chunk:
                                 usage_stats = chunk["usage"]
 
                             if 'choices' in chunk and len(chunk['choices']) > 0:
                                 delta = chunk['choices'][0].get('delta', {})
                                 
-                                # Handle main content
                                 content = delta.get('content', '')
                                 if content:
                                     full_response += content
                                     if show_everything_in_console and not in_thinking:
                                         print(content, end='', flush=True)
                                 
-                                # Handle reasoning/thinking content
+                                # Handle reasoning content (only present when thinking is ON)
                                 reasoning_delta = delta.get('reasoning_content', '')
-                                if reasoning_delta and show_everything_in_console:
+                                if reasoning_delta:
                                     thinking_content += reasoning_delta
-                                    if not in_thinking:
-                                        print("\n\n🧠 [THINKING] ", end='', flush=True)
-                                        in_thinking = True
-                                    print(reasoning_delta, end='', flush=True)
+                                    if show_everything_in_console:
+                                        if not in_thinking:
+                                            print("\n\n🧠 [THINKING] ", end='', flush=True)
+                                            in_thinking = True
+                                        print(reasoning_delta, end='', flush=True)
                                 
-                                # Check if we exited thinking mode
                                 if in_thinking and content and not reasoning_delta:
-                                    print("\n\n💡 [ANSWER] ", end='', flush=True)
+                                    if show_everything_in_console:
+                                        print("\n\n💡 [ANSWER] ", end='', flush=True)
                                     in_thinking = False
                                     
                         except json.JSONDecodeError:
                             pass
 
-            # Finalize debug output
             if show_everything_in_console:
                 print("\n--- <|REAL-TIME STREAM|> ENDS ---\n")
                 
-                # --- TOKEN STATS LOGIC ---
                 print("="*60)
                 print(" [Prompt Generator] TOKEN USAGE STATISTICS")
                 print("="*60)
 
-                # Use server stats if available, otherwise 0
                 total_input = usage_stats.get('prompt_tokens', 0) if usage_stats else 0
                 total_output = usage_stats.get('completion_tokens', 0) if usage_stats else 0
 
-                # Calculate Proportions (Approximation based on char length)
-                # Since we don't have a tokenizer locally, we split the total input tokens
-                # based on the character length ratio of system vs user prompt.
                 sys_len = len(system_prompt)
                 usr_len = len(prompt)
                 total_in_len = sys_len + usr_len
@@ -615,7 +703,6 @@ class PromptGenerator:
                     sys_tokens = 0
                     usr_tokens = 0
 
-                # Same logic for Output (Thinking vs Answer)
                 think_len = len(thinking_content)
                 ans_len = len(full_response)
                 total_out_len = think_len + ans_len
@@ -643,29 +730,28 @@ class PromptGenerator:
 
             print("[Prompt Generator] Successfully generated prompt")
 
-            # Cache the result
             self._prompt_cache[cache_key] = full_response
 
-            # Stop server if requested
             if stop_server_after:
                 self.stop_server()
 
             return (full_response,)
 
         except comfy.model_management.InterruptProcessingException:
-            # Re-raise interrupt exceptions so ComfyUI handles them properly
             raise
         except requests.exceptions.ConnectionError:
             error_msg = f"Error: Could not connect to server at {full_url}. Server may have crashed."
             print(f"[Prompt Generator] {error_msg}")
             return (error_msg,)
         except requests.exceptions.Timeout:
-            error_msg = "Error: Request timed out (>120s)"
+            error_msg = "Error: Request timed out (>300s)"
             print(f"[Prompt Generator] {error_msg}")
             return (error_msg,)
         except Exception as e:
             error_msg = f"Error: {e}"
             print(f"[Prompt Generator] {error_msg}")
+            import traceback
+            traceback.print_exc()
             return (error_msg,)
 
 
