@@ -27,6 +27,11 @@ class PromptGenOptions:
                     "default": all_models[0] if all_models else "No models available",
                     "tooltip": "Select model to use. Models with ⬇ will be downloaded automatically."
                 }),
+                "gpu_layers": ("STRING", {
+                    "default": "",
+                    "placeholder": "gpu0:0.7, gpu0:0.5,gpu1:0.4",
+                    "tooltip": "GPU layer distribution. Examples:\n• empty -> All layers go to the first GPU (default)\n• gpu0:0.7 -> 70% to GPU:0, 30% to CPU\n• gpu0:0.5, gpu1:0.4 -> 50% GPU:0, 40% GPU:1, 10% CPU"
+                }),
                 "enable_thinking": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "Enable thinking/reasoning mode (model thinks before answering)"
@@ -93,7 +98,7 @@ class PromptGenOptions:
     RETURN_NAMES = ("options",)
     FUNCTION = "create_options"
 
-    def create_options(self, model, enable_thinking, max_tokens, use_model_default_sampling,
+    def create_options(self, model, gpu_layers, enable_thinking, max_tokens, use_model_default_sampling,
                        temperature, top_p, top_k, min_p, repeat_penalty, 
                        system_prompt=""):
         
@@ -103,6 +108,7 @@ class PromptGenOptions:
         
         options = {
             "model": model,
+            "gpu_config": gpu_layers.strip() if gpu_layers.strip() else "auto",
             "enable_thinking": enable_thinking,
             "max_tokens": max_tokens,
             "use_model_default_sampling": use_model_default_sampling,
