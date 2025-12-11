@@ -44,6 +44,9 @@ Or something like this (thinking model):
 You can even go for uncensored LLMs, like that one for example:
 - https://huggingface.co/mradermacher/Josiefied-Qwen3-8B-abliterated-v1-GGUF
 
+It also works with vision models (only text):
+- https://huggingface.co/unsloth/Qwen3-VL-4B-Thinking-GGUF
+
 ## Usage
 It should look like this.
 
