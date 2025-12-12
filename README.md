@@ -55,3 +55,17 @@ It should look like this.
 An example workflow (for Z-image turbo) can be found [here](https://github.com/BigStationW/ComfyUI-Prompt-Manager/blob/main/workflow/workflow_Z-image_turbo.json).
 
 PS: **The Display Any (rgthree)** node can be found [here](https://github.com/rgthree/rgthree-comfy).
+
+## MultiGPU and offloading
+
+This node allows you to split the model into your GPUs and the CPU with the **gpu_layer**s placeholder.
+
+For example:
+- Empty placeholder -> All layers go to the first GPU (default)
+- gpu0:0.7 -> 70% to GPU:0, 30% to CPU
+- gpu0:0.5, gpu1:0.4 -> 50% GPU:0, 40% GPU:1, 10% CPU
+
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/d5869277-8c3e-439f-a08a-5a0401835d6f" />
+
+
+
