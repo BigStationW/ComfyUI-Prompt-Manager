@@ -10,6 +10,9 @@ class PromptGenOptions:
         local_models = get_local_models()
         hf_models = get_huggingface_models()
         mmproj_models = get_mmproj_models()
+
+        # Filter out mmproj files from local models
+        local_models = [m for m in local_models if 'mmproj' not in m.lower()]
         
         # Combine: local models first, then downloadable ones marked with ⬇
         all_models = list(local_models)
@@ -94,7 +97,7 @@ class PromptGenOptions:
                     "default": 1.0,
                     "min": 0.0,
                     "max": 2.0,
-                    "step": 0.1,
+                    "step": 0.01,
                     "tooltip": "Repetition penalty (1.0 = no penalty, higher = less repetition)"
                 }),
             },
