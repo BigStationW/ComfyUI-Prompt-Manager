@@ -25,7 +25,7 @@ winget install llama.cpp
 ```
 If you have another OS, you can refer to [this](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md).
 
-To update llama.cpp, open cmd and run:
+To update llama.cpp, simply open cmd and run:
 ```
 winget upgrade llama.cpp
 ```
