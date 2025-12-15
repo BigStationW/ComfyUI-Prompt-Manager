@@ -1,0 +1,18 @@
+[project]
+name = "prompt-rewriter"
+description = "Prompt Rewriter for ComfyUI using llama.cpp for local inference. Supports LLMs, VLMs, and both Instruct and Thinking models."
+version = "1.0.0"
+license = {file = "LICENSE"} 
+
+[project.urls]
+Repository = "https://github.com/BigStationW/ComfyUI-Prompt-Rewriter"
+#  Used by Comfy Registry https://registry.comfy.org
+Documentation = "https://github.com/BigStationW/ComfyUI-Prompt-Rewriter/wiki"
+"Bug Tracker" = "https://github.com/BigStationW/ComfyUI-Prompt-Rewriter/issues"
+
+[tool.comfy]
+PublisherId = "bigstationw"
+DisplayName = "ComfyUI-Prompt-Rewriter"
+Icon = ""
+includes = [] 
+# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
