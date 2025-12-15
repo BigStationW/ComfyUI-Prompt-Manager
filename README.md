@@ -1,4 +1,4 @@
-# ComfyUI Prompt Manager
+# ComfyUI Prompt Rewriter
 
 This is a custom fork of [this repository](https://github.com/FranckyB/ComfyUI-Prompt-Manager) incorporating [some enhancements](https://github.com/FranckyB/ComfyUI-Prompt-Manager/pull/3).
 
@@ -12,9 +12,9 @@ This node can rewrite your prompts with the help of a chosen instruct (or thinki
 1) Navigate to the **ComfyUI/custom_nodes** folder, [open cmd](https://www.youtube.com/watch?v=bgSSJQolR0E&t=47s) and run:
 
 ```
-git clone https://github.com/BigStationW/ComfyUI-Prompt-Manager
+git clone https://github.com/BigStationW/ComfyUI-Prompt-Rewriter
 ```
-2) Navigate to the **ComfyUI\custom_nodes\ComfyUI-Prompt-Manager** folder, open cmd and run:
+2) Navigate to the **ComfyUI\custom_nodes\ComfyUI-Prompt-Rewriter** folder, open cmd and run:
 
 ```
 ..\..\..\python_embeded\python.exe -s -m pip install -r "requirements.txt"
@@ -32,8 +32,9 @@ winget upgrade llama.cpp
 
 ## Instruct/Thinking LLMs
 
-1) Navigate to the **ComfyUI\models** folder and create a folder named "gguf"
-2) Navigate to the **ComfyUI\models\gguf** folder and place your chosen GGUF LLM file there.
+1) Navigate to the **ComfyUI\models** folder and create a folder named "LLM"
+2) Navigate to the **ComfyUI\models\LLM** folder and create a folder named "gguf"
+3) Navigate to the **ComfyUI\models\LLM\gguf** folder and place your chosen GGUF LLM file there.
 
 For example you can go for this (Instruct model):
 - https://huggingface.co/Qwen/Qwen3-4B-GGUF
@@ -68,11 +69,11 @@ For example:
 ## Image inputs
 For visual models, you can add up to 5 images to the Prompt Generator Options node.
 
-1. Download a visual model and put it to the **ComfyUI\models\gguf** folder, like that one for example:
+1. Download a visual model and put it to the **ComfyUI\models\LLM\gguf** folder, like that one for example:
 
 - https://huggingface.co/unsloth/Qwen3-VL-4B-Thinking-GGUF
 
-2. Download its mmproj file and put it to the **ComfyUI\models\gguf** folder.
+2. Download its mmproj file and put it to the **ComfyUI\models\LLM\gguf** folder.
 - https://huggingface.co/unsloth/Qwen3-VL-4B-Thinking-GGUF/blob/main/mmproj-BF16.gguf
 
 3. You have to rename "mmproj-BF16.gguf" to "Qwen3-VL-4B-Thinking-mmproj-BF16.gguf"
