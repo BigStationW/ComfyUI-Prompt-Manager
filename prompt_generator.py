@@ -17,6 +17,38 @@ from .model_manager import get_local_models, get_model_path, is_model_local, dow
 # Import ComfyUI's model management for interrupt handling
 import comfy.model_management
 
+def colorize(text, color='blue'):
+    """
+    Colorize console text using ANSI escape codes.
+    
+    Args:
+        text: Text to colorize
+        color: Color name ('blue', 'cyan', 'green', 'yellow', 'red', 'magenta')
+    
+    Returns:
+        Colorized text string
+    """
+    colors = {
+        'blue': '\033[94m',      # Light blue
+        'cyan': '\033[96m',      # Cyan
+        'green': '\033[92m',     # Light green
+        'yellow': '\033[93m',    # Yellow
+        'red': '\033[91m',       # Light red
+        'magenta': '\033[95m',   # Magenta
+        'reset': '\033[0m'       # Reset to default
+    }
+    
+    color_code = colors.get(color.lower(), colors['blue'])
+    reset_code = colors['reset']
+    
+    return f"{color_code}{text}{reset_code}"
+
+# The color can be changed here
+def print_section(title, start=True, color='red'):
+    """Print a section header with consistent formatting"""
+    marker = "STARTS" if start else "ENDS"
+    print(colorize(f"--- <|{title.upper()}|> {marker} ---", color))
+
 # Global variable to track the server process
 _server_process = None
 _current_model = None
@@ -455,13 +487,19 @@ class PromptGeneratorZ:
             print(f"[Prompt Generator] Warning: Could not tokenize: {e}")
         return None
     
+    # Change this line in cache key generation:
     def get_image_hash(self, images):
         if not images:
             return None
         import hashlib
         hasher = hashlib.md5()
-        for img in images:
-            hasher.update(img.cpu().numpy().tobytes())
+        for item in images:
+            # Handle both old format (just tensor) and new format (slot, tensor)
+            if isinstance(item, tuple):
+                slot, img = item
+                hasher.update(img.cpu().numpy().tobytes())
+            else:
+                hasher.update(item.cpu().numpy().tobytes())
         return hasher.hexdigest()
     
     @staticmethod
@@ -722,21 +760,21 @@ class PromptGeneratorZ:
 
         PromptGeneratorZ.kill_all_llama_servers()
 
-    def _print_debug_header(self, payload, enable_thinking, use_model_default_sampling):
+    def _print_debug_header(self, payload, enable_thinking, use_model_default_sampling, images_with_slots=None):
         """Helper to print debug info header"""
         print("\n" + "="*60)
         print(" [Prompt Generator] DEBUG: TOKENS & MESSAGES IN ACTION")
         print("="*60)
         
         if enable_thinking:
-            print(f"\n🧠 THINKING MODE: ON (model will reason before answering)")
+            print(f"\nTHINKING MODE: ON (model will reason before answering)")
         else:
-            print(f"\n🧠 THINKING MODE: OFF (direct answer, no reasoning)")
+            print(f"\nTHINKING MODE: OFF (direct answer, no reasoning)")
         
         if use_model_default_sampling:
-            print(f"⚙️  PARAMETERS: Using model defaults")
+            print(f"PARAMETERS: Using model defaults")
         else:
-            print(f"⚙️  PARAMETERS: Using custom/node settings")
+            print(f"PARAMETERS: Using custom/node settings")
         
         print("\n--- GENERATION PARAMS ---")
         params = {k: v for k, v in payload.items() if k != "messages"}
@@ -744,17 +782,29 @@ class PromptGeneratorZ:
         
         if "messages" in payload:
             for msg in payload["messages"]:
-                role = msg.get("role", "unknown").upper()
+                role = msg.get("role", "unknown")
                 content = msg.get("content", "")
                 
-                print(f"\n--- <|{role}|> STARTS ---")
+                print()
+                print_section(role)
                 
                 # Handle multi-part content (for VLM with images)
                 if isinstance(content, list):
-                    for idx, part in enumerate(content):
+                    img_idx = 0
+                    for part in content:
                         if isinstance(part, dict):
                             if part.get("type") == "image_url":
-                                print(f"[Image {idx + 1}]")
+                                # Get the actual slot number from images_with_slots if available
+                                if images_with_slots and img_idx < len(images_with_slots):
+                                    item = images_with_slots[img_idx]
+                                    if isinstance(item, tuple):
+                                        slot_num = item[0]
+                                    else:
+                                        slot_num = img_idx + 1
+                                else:
+                                    slot_num = img_idx + 1
+                                print(f"[Image {slot_num}]")
+                                img_idx += 1
                             elif part.get("type") == "text":
                                 print(part.get("text", ""))
                             else:
@@ -765,7 +815,9 @@ class PromptGeneratorZ:
                     # Simple text content
                     print(content)
                 
-                print(f"--- <|{role}|> ENDS ---")
+                print_section(role, start=False)
+                if role.lower() == "user":
+                    print()
 
     def convert_prompt(self, prompt: str, seed: int, stop_server_after=False, 
                     show_everything_in_console=False, options=None) -> str:
@@ -849,9 +901,11 @@ class PromptGeneratorZ:
                 print(" [Prompt Generator] CACHED RESULT")
                 print("="*60)
                 print(f"\n🧠 THINKING MODE: {'ON' if enable_thinking else 'OFF'}")
-                print(f"\n--- <|CACHED MODEL ANSWER|> ---")
+                print()
+                print_section("cached model answer")
                 print(last_cached_result)
-                print(f"--- <|END CACHED|> ---\n")
+                print_section("cached model answer", start=False)
+                print()
 
             return (last_cached_result,)
 
@@ -898,7 +952,6 @@ class PromptGeneratorZ:
         if show_everything_in_console:
             cached_token_counts = self._get_token_counts_parallel(system_prompt, prompt)
         
-    # ... rest of your code for building payload and making request ...
         # Log thinking mode
         if enable_thinking:
             print("[Prompt Generator] Thinking: ON (per-request)")
@@ -911,7 +964,15 @@ class PromptGeneratorZ:
         # Build user message content
         if images:
             user_content = []
-            for idx, img_tensor in enumerate(images):
+            for item in images:
+                # Handle (slot_num, tensor) tuples
+                if isinstance(item, tuple):
+                    slot_num, img_tensor = item
+                else:
+                    # Fallback for old format
+                    slot_num = images.index(item) + 1
+                    img_tensor = item
+                
                 base64_img = tensor_to_base64(img_tensor)
                 if base64_img:
                     user_content.append({
@@ -920,9 +981,9 @@ class PromptGeneratorZ:
                             "url": f"data:image/png;base64,{base64_img}"
                         }
                     })
-                    print(f"[Prompt Generator] Image {idx + 1} encoded successfully")
+                    print(f"[Prompt Generator] Image {slot_num} encoded successfully")
                 else:
-                    print(f"[Prompt Generator] Warning: Failed to encode image {idx + 1}")
+                    print(f"[Prompt Generator] Warning: Failed to encode image {slot_num}")
             user_content.append({
                 "type": "text",
                 "text": prompt
@@ -959,7 +1020,7 @@ class PromptGeneratorZ:
                 payload["top_p"] = 0.95
                 payload["min_p"] = 0.05
                 payload["repeat_penalty"] = 1.0
-            payload["max_tokens"] = int(options.get("max_tokens", 8192)) if options else 8192  # ← Always from options
+            payload["max_tokens"] = int(options.get("max_tokens", 8192)) if options else 8192
         else:
             if options:
                 if "temperature" in options:
@@ -974,19 +1035,6 @@ class PromptGeneratorZ:
                     payload["repeat_penalty"] = round(float(options["repeat_penalty"]), 4)
             payload["max_tokens"] = int(options.get("max_tokens", 8192)) if options else 8192
 
-        if (last_cached_key == cache_key and _current_model == model_to_use):
-            print("[Prompt Generator] Returning cached prompt result.")
-            
-            if show_everything_in_console:
-                self._print_debug_header(payload, enable_thinking, use_model_default_sampling)
-                print(f"\n--- <|CACHED MODEL ANSWER|> STARTS ---")
-                print(last_cached_result)
-                print(f"--- <|CACHED MODEL ANSWER|> ENDS ---\n")
-
-            if stop_server_after:
-                self.stop_server()
-            return (last_cached_result,)
-
         full_url = f"{self.SERVER_URL}/v1/chat/completions"
 
         try:
@@ -994,10 +1042,7 @@ class PromptGeneratorZ:
                 print(f"[Prompt Generator] Generating with model: {_current_model}")
             
             if show_everything_in_console:
-                self._print_debug_header(payload, enable_thinking, use_model_default_sampling)
-                if images:
-                    print(f"\n📷 Images attached: {len(images)}")
-                print("\n--- <|REAL-TIME STREAM|> STARTS ---")
+                self._print_debug_header(payload, enable_thinking, use_model_default_sampling, images)
 
             response = requests.post(
                 full_url,
@@ -1009,9 +1054,13 @@ class PromptGeneratorZ:
 
             full_response = ""
             thinking_content = ""
-            in_thinking = False
             usage_stats = None
             first_content_received = False
+            first_thinking_received = False
+            
+            # Add these new flags:
+            thinking_section_opened = False
+            answer_section_opened = False
             
             for line in response.iter_lines():
                 try:
@@ -1040,6 +1089,22 @@ class PromptGeneratorZ:
                             if 'choices' in chunk and len(chunk['choices']) > 0:
                                 delta = chunk['choices'][0].get('delta', {})
                                 
+                                # Handle reasoning/thinking content FIRST
+                                reasoning_delta = delta.get('reasoning_content', '')
+                                if reasoning_delta:
+                                    # Strip leading newlines from first thinking content
+                                    if not first_thinking_received:
+                                        reasoning_delta = reasoning_delta.lstrip('\n')
+                                        first_thinking_received = True
+                                    
+                                    thinking_content += reasoning_delta
+                                    if show_everything_in_console:
+                                        if not thinking_section_opened:
+                                            print_section("thinking")
+                                            thinking_section_opened = True
+                                        print(reasoning_delta, end='', flush=True)
+                                
+                                # Handle answer content
                                 content = delta.get('content', '')
                                 if content:
                                     # Strip leading newlines from first content only
@@ -1048,28 +1113,34 @@ class PromptGeneratorZ:
                                         first_content_received = True
                                     
                                     full_response += content
-                                    if show_everything_in_console and not in_thinking:
+                                    if show_everything_in_console:
+                                        # Close thinking section if it was open
+                                        if thinking_section_opened and not answer_section_opened:
+                                            print() 
+                                            print_section("thinking", start=False)
+                                            print()
+                                            print_section("final answer")
+                                            answer_section_opened = True
+                                        elif not answer_section_opened:
+                                            # No thinking, just answer
+                                            print_section("final answer")
+                                            answer_section_opened = True
                                         print(content, end='', flush=True)
-                                
-                                reasoning_delta = delta.get('reasoning_content', '')
-                                if reasoning_delta:
-                                    thinking_content += reasoning_delta
-                                    if show_everything_in_console:
-                                        if not in_thinking:
-                                            print("\n\n🧠 [THINKING] ", end='', flush=True)
-                                            in_thinking = True
-                                        print(reasoning_delta, end='', flush=True)
-                                
-                                if in_thinking and content and not reasoning_delta:
-                                    if show_everything_in_console:
-                                        print("\n\n💡 [ANSWER] ", end='', flush=True)
-                                    in_thinking = False
-                                    
+                                        
                         except json.JSONDecodeError:
                             pass
 
             if show_everything_in_console:
-                print("\n--- <|REAL-TIME STREAM|> ENDS ---\n")
+                # Close any open sections
+                if answer_section_opened:
+                    print()  # Add newline BEFORE closing final answer
+                    print_section("final answer", start=False)
+                elif thinking_section_opened:
+                    # Edge case: only thinking, no answer
+                    print()  # Add newline BEFORE closing thinking
+                    print_section("thinking", start=False)
+                
+                print()  # Extra newline before token stats
                 
                 # Use pre-cached token counts (already fetched before generation)
                 self._print_token_stats(
@@ -1133,7 +1204,7 @@ class PromptGeneratorZ:
 
     def _get_token_counts_parallel(self, system_prompt, user_prompt):
         """Get token counts for system and user prompts in parallel using threads"""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         
         results = {"system": None, "user": None}
         
