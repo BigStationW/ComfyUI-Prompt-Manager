@@ -5,7 +5,7 @@ This is a custom fork of [this repository](https://github.com/FranckyB/ComfyUI-P
 ## Use case
 This node can rewrite your prompts with the help of a chosen instruct (or thinking) LLM (GGUF).
 
-<img width="700" alt="FINAL" src="https://github.com/user-attachments/assets/672fa21f-670d-4639-9121-5cb66ae4959b" />
+<img width="700" alt="AA" src="https://github.com/user-attachments/assets/c2b4de17-0121-4f9f-a845-3c0c52f74bce" />
 
 ## Installation
 
@@ -48,7 +48,7 @@ You can even go for uncensored LLMs, like that one for example:
 ## Usage
 It should look like this.
 
-<img width="700" alt="image" src="https://github.com/user-attachments/assets/8095c9d6-15ce-4680-9dc3-7fe107973f9e" />
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/e29ec62a-8770-41cf-99ed-7438a6fd4894" />
 
 An example workflow (for Z-image turbo) can be found [here](https://github.com/BigStationW/ComfyUI-Prompt-Manager/blob/main/workflow/workflow_Z-image_turbo.json).
 
@@ -63,8 +63,7 @@ For example:
 - gpu0:0.7 -> 70% to GPU:0, 30% to CPU
 - gpu0:0.5, gpu1:0.4 -> 50% GPU:0, 40% GPU:1, 10% CPU
 
-<img width="700" alt="image" src="https://github.com/user-attachments/assets/d5869277-8c3e-439f-a08a-5a0401835d6f" />
-
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/54bd5a5c-73c5-4271-856b-997bcb0a48c5" />
 
 ## Image inputs
 For visual models, you can add up to 5 images to the Prompt Generator Options node.
@@ -80,7 +79,7 @@ For visual models, you can add up to 5 images to the Prompt Generator Options no
 
 At the end it'll look like this:
 
-<img width="700" alt="image" src="https://github.com/user-attachments/assets/4cdb8201-afac-4360-b1c0-b9de26e87c87" />
+<img width="700" alt="image" src="https://github.com/user-attachments/assets/a2f602a4-f156-49b8-b70b-4f94b7900d95" />
 
 
 
