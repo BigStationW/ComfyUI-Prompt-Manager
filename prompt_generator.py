@@ -44,10 +44,9 @@ def colorize(text, color='blue'):
     return f"{color_code}{text}{reset_code}"
 
 # The color can be changed here
-def print_section(title, start=True, color='red'):
+def print_section(title, color='red'):
     """Print a section header with consistent formatting"""
-    marker = "STARTS" if start else "ENDS"
-    print(colorize(f"--- <|{title.upper()}|> {marker} ---", color))
+    print(colorize(f"--- <|{title.upper()}|> ---", color))
 
 # Global variable to track the server process
 _server_process = None
@@ -785,8 +784,11 @@ class PromptGeneratorZ:
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
                 
+                # Map role to desired label
+                label = "SYSTEM PROMPT" if role.lower() == "system" else "USER PROMPT" if role.lower() == "user" else role.upper()
+                
                 print()
-                print_section(role)
+                print_section(label)
                 
                 # Handle multi-part content (for VLM with images)
                 if isinstance(content, list):
@@ -815,7 +817,6 @@ class PromptGeneratorZ:
                     # Simple text content
                     print(content)
                 
-                print_section(role, start=False)
                 if role.lower() == "user":
                     print()
 
@@ -904,7 +905,6 @@ class PromptGeneratorZ:
                 print()
                 print_section("cached model answer")
                 print(last_cached_result)
-                print_section("cached model answer", start=False)
                 print()
 
             return (last_cached_result,)
@@ -1117,7 +1117,6 @@ class PromptGeneratorZ:
                                         # Close thinking section if it was open
                                         if thinking_section_opened and not answer_section_opened:
                                             print() 
-                                            print_section("thinking", start=False)
                                             print()
                                             print_section("final answer")
                                             answer_section_opened = True
@@ -1134,11 +1133,9 @@ class PromptGeneratorZ:
                 # Close any open sections
                 if answer_section_opened:
                     print()  # Add newline BEFORE closing final answer
-                    print_section("final answer", start=False)
                 elif thinking_section_opened:
                     # Edge case: only thinking, no answer
                     print()  # Add newline BEFORE closing thinking
-                    print_section("thinking", start=False)
                 
                 print()  # Extra newline before token stats
                 
