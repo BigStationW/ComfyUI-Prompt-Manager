@@ -1,8 +1,8 @@
 {
   "id": "44259803-f9d6-4eb1-a94a-75b8213649d0",
   "revision": 0,
-  "last_node_id": 155,
-  "last_link_id": 302,
+  "last_node_id": 157,
+  "last_link_id": 305,
   "nodes": [
     {
       "id": 10,
@@ -438,7 +438,7 @@
         275.4088744887117
       ],
       "flags": {},
-      "order": 14,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -452,7 +452,7 @@
           "widget": {
             "name": "text"
           },
-          "link": 301
+          "link": 304
         }
       ],
       "outputs": [
@@ -525,14 +525,14 @@
         281.5151970699444
       ],
       "flags": {},
-      "order": 13,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
           "dir": 3,
           "name": "source",
           "type": "*",
-          "link": 300
+          "link": 305
         }
       ],
       "outputs": [],
@@ -594,63 +594,41 @@
       "bgcolor": "#653"
     },
     {
-      "id": 155,
-      "type": "PromptGeneratorZ",
+      "id": 147,
+      "type": "Note",
       "pos": [
-        30.15485403224241,
-        1382.2243207830056
+        -653.4308588497848,
+        1003.2296258342874
       ],
       "size": [
-        524.8997886271859,
-        352.1505325261119
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "options",
-          "shape": 7,
-          "type": "OPTIONS",
-          "link": 302
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "STRING",
-          "links": [
-            300,
-            301
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "BigStationW/ComfyUI-Prompt-Manager",
-        "ver": "ebca063e3d2ae8268eddffd2cd26e6a5d6217993",
-        "Node name for S&R": "PromptGeneratorZ"
-      },
-      "widgets_values": [
-        "A woman drinking coffee in a bar.",
-        1019223859961006,
-        "randomize",
-        true,
-        false
-      ]
-    },
-    {
-      "id": 154,
-      "type": "PromptGenOptionsZ",
-      "pos": [
-        -716.6226583834443,
-        1261.2781588661069
-      ],
-      "size": [
-        539.5306616949038,
-        797.4977040679851
+        399.91092069296496,
+        174.983513308679
       ],
       "flags": {},
       "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "If the System prompt is empty, it means it is using the default prompt.\n\nDon't hesitate to create your own System prompt by writing it into the \"Prompt Generator Options\" text box."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 156,
+      "type": "PromptRewriterOptionsZ",
+      "pos": [
+        -707.2693329216568,
+        1306.3712824621518
+      ],
+      "size": [
+        552.2856925284023,
+        796.4986144142995
+      ],
+      "flags": {},
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -689,17 +667,17 @@
           "name": "options",
           "type": "OPTIONS",
           "links": [
-            302
+            303
           ]
         }
       ],
       "properties": {
-        "aux_id": "BigStationW/ComfyUI-Prompt-Manager",
-        "ver": "ebca063e3d2ae8268eddffd2cd26e6a5d6217993",
-        "Node name for S&R": "PromptGenOptionsZ"
+        "aux_id": "BigStationW/ComfyUI-Prompt-Rewriter",
+        "ver": "3af9069052d89d38be2ad4dabb1607e7fcd0262f",
+        "Node name for S&R": "PromptRewriterOptionsZ"
       },
       "widgets_values": [
-        "Qwen3-4B-Q8_0.gguf",
+        "Qwen3-4B-Thinking-2507-Q8_0.gguf",
         "",
         true,
         8192,
@@ -714,27 +692,48 @@
       ]
     },
     {
-      "id": 147,
-      "type": "Note",
+      "id": 157,
+      "type": "PromptRewriterZ",
       "pos": [
-        -653.4308588497848,
-        1003.2296258342874
+        39.44784582120853,
+        1290.7175805264876
       ],
       "size": [
-        399.91092069296496,
-        174.983513308679
+        479.3168244210399,
+        389.42484641634906
       ],
       "flags": {},
-      "order": 9,
+      "order": 11,
       "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {},
-      "widgets_values": [
-        "If the System prompt is empty, it means it is using the default prompt.\n\nDon't hesitate to create your own System prompt by writing it into the \"Prompt Generator Options\" text box."
+      "inputs": [
+        {
+          "name": "options",
+          "type": "OPTIONS",
+          "link": 303
+        }
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "outputs": [
+        {
+          "name": "output",
+          "type": "STRING",
+          "links": [
+            304,
+            305
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "BigStationW/ComfyUI-Prompt-Rewriter",
+        "ver": "3af9069052d89d38be2ad4dabb1607e7fcd0262f",
+        "Node name for S&R": "PromptRewriterZ"
+      },
+      "widgets_values": [
+        "A woman drinking coffee in a bar.",
+        42,
+        "fixed",
+        true,
+        false
+      ]
     }
   ],
   "links": [
@@ -843,38 +842,38 @@
       "CONDITIONING"
     ],
     [
-      300,
-      155,
+      303,
+      156,
       0,
-      146,
+      157,
       0,
-      "STRING"
+      "OPTIONS"
     ],
     [
-      301,
-      155,
+      304,
+      157,
       0,
       136,
       1,
       "STRING"
     ],
     [
-      302,
-      154,
+      305,
+      157,
       0,
-      155,
+      146,
       0,
-      "OPTIONS"
+      "STRING"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.473624407447884,
+      "scale": 0.5209868481926724,
       "offset": [
-        1488.8093664163634,
-        -790.4513064545804
+        1237.7577632219602,
+        -631.1040779915694
       ]
     },
     "frontendVersion": "1.34.8",
