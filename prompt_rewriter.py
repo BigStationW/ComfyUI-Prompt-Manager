@@ -453,13 +453,17 @@ def build_gpu_args(gpu_specs, total_layers):
         return ["-ngl", "999", "--split-mode", "none", "--main-gpu", "0"]
 
     if len(gpu_specs) == 1:
-        # Single GPU with specific layer count
         device_idx, layer_count = gpu_specs[0]
-        # Add --split-mode none for single GPU performance
+        
+        # If user wants ALL layers on GPU, use 999 for better optimization
+        if layer_count >= total_layers:
+            return ["-ngl", "999", "--split-mode", "none", "--main-gpu", str(device_idx)]
+        
+        # Partial offload - use exact count
         return ["-ngl", str(layer_count), "--split-mode", "none", "--main-gpu", str(device_idx)]
 
     else:
-        # Multi-GPU (no split-mode none here, we want tensor splitting)
+        # Multi-GPU case stays the same
         max_device = max(device_idx for device_idx, _ in gpu_specs)
         split_values = [0] * (max_device + 1)
         
