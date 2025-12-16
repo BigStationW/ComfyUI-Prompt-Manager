@@ -450,15 +450,16 @@ def build_gpu_args(gpu_specs, total_layers):
     """
     if gpu_specs is None:
         # Auto mode: offload all to GPU 0
-        return ["-ngl", "999", "--main-gpu", "0"]
+        return ["-ngl", "999", "--split-mode", "none", "--main-gpu", "0"]
 
     if len(gpu_specs) == 1:
         # Single GPU with specific layer count
         device_idx, layer_count = gpu_specs[0]
-        return ["-ngl", str(layer_count), "--main-gpu", str(device_idx)]
+        # Add --split-mode none for single GPU performance
+        return ["-ngl", str(layer_count), "--split-mode", "none", "--main-gpu", str(device_idx)]
 
     else:
-        # Multi-GPU
+        # Multi-GPU (no split-mode none here, we want tensor splitting)
         max_device = max(device_idx for device_idx, _ in gpu_specs)
         split_values = [0] * (max_device + 1)
         
