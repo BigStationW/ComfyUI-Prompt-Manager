@@ -690,13 +690,25 @@ class PromptRewriterZ:
             # Get server path based on backend
             server_cmd = get_backend_server_path(backend)
             if server_cmd is None:
-                error_msg = f"Error: Could not find llama-server for backend '{backend}'. "
-                if backend == "CUDA":
-                    error_msg += "Please ensure llama_binaries_* folder exists with llama-server.exe"
+                if backend.upper() == "VULKAN":
+                    install_url = (
+                        "https://github.com/BigStationW/ComfyUI-Prompt-Rewriter"
+                        "?tab=readme-ov-file#backend-vulkan---works-on-all-gpus"
+                    )
                 else:
-                    error_msg += "Please ensure llama-server is installed and in system PATH"
+                    install_url = (
+                        "https://github.com/BigStationW/ComfyUI-Prompt-Rewriter"
+                        "?tab=readme-ov-file#backend-cuda---specialized-for-nvdia"
+                    )
+
+                error_msg = (
+                    f"Unable to locate the required `llama-server` executable for the "
+                    f"'{backend}' backend.\n\n"
+                    f"Please follow the installation instructions here:\n{install_url}"
+                )
+
                 print(f"[Prompt Rewriter] {error_msg}")
-                return (False, error_msg)
+                return False, error_msg
 
             print(f"[Prompt Rewriter] Server path: {server_cmd}")
 
