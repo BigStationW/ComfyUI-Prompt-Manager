@@ -1333,9 +1333,6 @@ class PromptRewriterZ:
 
     def _print_token_stats(self, usage_stats, cached_token_counts, thinking_content, full_response, images, timings_stats=None):
         """Print token statistics using pre-cached counts"""
-            # DEBUG: Print full timings from llama.cpp
-        if timings_stats:
-            print(f"[DEBUG] Full llama.cpp timings: {json.dumps(timings_stats, indent=2)}")
         
         # Get tokens per second from llama.cpp timings
         tokens_per_sec = None
