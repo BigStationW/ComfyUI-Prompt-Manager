@@ -53,6 +53,10 @@ class PromptRewriterOptionsZ:
                     "step": 1,
                     "tooltip": "Maximum tokens to generate"
                 }),
+                "flash_attention": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable Flash Attention for faster inference (recommended: enabled)"
+                }),
                 "system_prompt": ("STRING", {
                     "multiline": True,
                     "default": "",
@@ -125,7 +129,7 @@ class PromptRewriterOptionsZ:
     FUNCTION = "create_options"
 
     def create_options(self, model, gpu_layers, enable_thinking, context_size, max_tokens, 
-                    use_model_default_sampling, temperature, top_p, top_k, min_p, 
+                    flash_attention, use_model_default_sampling, temperature, top_p, top_k, min_p, 
                     repeat_penalty, system_prompt="", 
                     image_1=None, image_2=None, image_3=None, image_4=None, image_5=None):
         
@@ -160,6 +164,7 @@ class PromptRewriterOptionsZ:
             "enable_thinking": enable_thinking,
             "context_size": context_size,
             "max_tokens": max_tokens,
+            "flash_attention": flash_attention,
             "use_model_default_sampling": use_model_default_sampling,
             "temperature": temperature,
             "top_p": top_p,
