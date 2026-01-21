@@ -136,6 +136,7 @@ _current_gpu_config = None  # Track GPU configuration
 _current_context_size = None  # Track context size
 _current_mmproj = None  # Track mmproj file
 _current_backend = None  # Track which backend is being used
+_current_flash_attention = None  # Track flash attention setting
 _model_default_params = None  # Cache for model default parameters
 _model_layer_cache = {}  # Cache for model layer counts
 
@@ -261,7 +262,7 @@ def setup_console_handler():
 
 def cleanup_server():
     """Cleanup function to stop server on exit"""
-    global _server_process, _current_model, _current_gpu_config, _current_context_size, _current_mmproj, _current_backend, _model_default_params
+    global _server_process, _current_model, _current_gpu_config, _current_context_size, _current_mmproj, _current_backend, _current_flash_attention, _model_default_params
 
     if _server_process:
         try:
@@ -282,6 +283,7 @@ def cleanup_server():
             _current_context_size = None
             _current_mmproj = None
             _current_backend = None
+            _current_flash_attention = None
             _model_default_params = None
 
     # Also kill any orphaned llama-server processes
@@ -639,25 +641,26 @@ class PromptRewriterZ:
         return None
 
     @staticmethod
-    def start_server(model_name, gpu_config=None, context_size=32768, mmproj=None, backend="CUDA"):
-        """Start llama.cpp server with specified model, GPU configuration, context size, mmproj, and backend"""
-        global _server_process, _current_model, _current_gpu_config, _current_context_size, _model_default_params, _current_mmproj, _current_backend
+    def start_server(model_name, gpu_config=None, context_size=32768, mmproj=None, backend="CUDA", flash_attention=True):
+        """Start llama.cpp server with specified model, GPU configuration, context size, mmproj, backend, and flash attention"""
+        global _server_process, _current_model, _current_gpu_config, _current_context_size, _model_default_params, _current_mmproj, _current_backend, _current_flash_attention
 
         # Kill any existing llama-server processes first
         PromptRewriterZ.kill_all_llama_servers()
 
-        # If server is already running with the same model, GPU config, context size, mmproj, and backend, don't restart
+        # If server is already running with the same model, GPU config, context size, mmproj, backend, and flash attention, don't restart
         if (_server_process and 
             _current_model == model_name and 
             _current_gpu_config == gpu_config and
             _current_context_size == context_size and
             _current_mmproj == mmproj and
             _current_backend == backend and
+            _current_flash_attention == flash_attention and
             PromptRewriterZ.is_server_alive()):
-            print(f"[Prompt Rewriter] Server already running with model: {model_name} (backend: {backend})")
+            print(f"[Prompt Rewriter] Server already running with model: {model_name} (backend: {backend}, flash_attention: {flash_attention})")
             return (True, None)
 
-        # Stop existing server if running different model, GPU config, context size, mmproj, or backend
+        # Stop existing server if running different model, GPU config, context size, mmproj, backend, or flash attention
         if _server_process:
             PromptRewriterZ.stop_server()
 
@@ -686,6 +689,7 @@ class PromptRewriterZ:
             print(f"[Prompt Rewriter] Starting llama.cpp server with model: {model_name}")
             print(f"[Prompt Rewriter] Backend: {backend}")
             print(f"[Prompt Rewriter] Context size: {context_size}")
+            print(f"[Prompt Rewriter] Flash Attention: {'enabled' if flash_attention else 'disabled'}")
 
             # Get server path based on backend
             server_cmd = get_backend_server_path(backend)
@@ -743,6 +747,12 @@ class PromptRewriterZ:
             
             cmd.extend(gpu_args)
             
+            # Add Flash Attention flag
+            if flash_attention:
+                cmd.extend(["-fa", "on"])
+            else:
+                cmd.extend(["-fa", "off"])
+            
             print(f"[Prompt Rewriter] Command: {' '.join(cmd)}")
             print("[Prompt Rewriter] Thinking mode: controlled per-request via chat_template_kwargs")
 
@@ -766,6 +776,7 @@ class PromptRewriterZ:
             _current_context_size = context_size
             _current_mmproj = mmproj
             _current_backend = backend
+            _current_flash_attention = flash_attention
 
             print("[Prompt Rewriter] Waiting for server to be ready...")
             
@@ -795,6 +806,7 @@ class PromptRewriterZ:
                     _current_context_size = None
                     _current_mmproj = None
                     _current_backend = None
+                    _current_flash_attention = None
                     return (False, error_msg + (f"\n\nServer output:\n{output[:1000]}" if output else ""))
                 
                 if (i + 1) % 10 == 0:
@@ -838,7 +850,7 @@ class PromptRewriterZ:
     @staticmethod
     def stop_server():
         """Stop the llama.cpp server"""
-        global _server_process, _current_model, _current_gpu_config, _current_context_size, _current_mmproj, _current_backend, _model_default_params
+        global _server_process, _current_model, _current_gpu_config, _current_context_size, _current_mmproj, _current_backend, _current_flash_attention, _model_default_params
 
         if _server_process:
             try:
@@ -858,6 +870,7 @@ class PromptRewriterZ:
                 _current_context_size = None
                 _current_mmproj = None
                 _current_backend = None
+                _current_flash_attention = None
                 _model_default_params = None
 
         PromptRewriterZ.kill_all_llama_servers()
@@ -926,7 +939,7 @@ class PromptRewriterZ:
     def convert_prompt(self, prompt: str, seed: int, backend: str = "CUDA", stop_server_after=False, keep_mmproj_loaded=True,
                     show_everything_in_console=False, options=None) -> str:
         """Convert prompt using llama.cpp server, with caching for repeated requests."""
-        global _current_model, _current_gpu_config, _current_context_size, _current_mmproj, _current_backend
+        global _current_model, _current_gpu_config, _current_context_size, _current_mmproj, _current_backend, _current_flash_attention
 
         if not prompt.strip():
             return ("",)
@@ -939,6 +952,7 @@ class PromptRewriterZ:
         context_size = 32768
         images = None
         mmproj = None
+        flash_attention = True  # Default value
         
         if options:
             if "model" in options and is_model_local(options["model"]):
@@ -955,6 +969,8 @@ class PromptRewriterZ:
                 images = options["images"]
             if "mmproj" in options:
                 mmproj = options["mmproj"]
+            if "flash_attention" in options:
+                flash_attention = options["flash_attention"]
         
         # ... model fallback code ...
 
@@ -1015,6 +1031,7 @@ class PromptRewriterZ:
             _current_context_size == context_size and
             _current_mmproj == mmproj_to_use and  # Use mmproj_to_use here
             _current_backend == backend and
+            _current_flash_attention == flash_attention and
             self.is_server_alive()):
             
             print("[Prompt Rewriter] Returning cached prompt result (matches last run).")
@@ -1045,6 +1062,7 @@ class PromptRewriterZ:
             _current_context_size != context_size or
             _current_mmproj != mmproj_to_use or  # Use mmproj_to_use here
             _current_backend != backend or
+            _current_flash_attention != flash_attention or
             not self.is_server_alive()):
             
             # Only restart server if needed
@@ -1071,6 +1089,9 @@ class PromptRewriterZ:
             elif _current_backend != backend:
                 needs_restart = True
                 restart_reason = f"Backend changed: {_current_backend} → {backend}"
+            elif _current_flash_attention != flash_attention:
+                needs_restart = True
+                restart_reason = f"Flash Attention changed: {_current_flash_attention} → {flash_attention}"
             elif not self.is_server_alive():
                 needs_restart = True
                 restart_reason = "Server not responding"
@@ -1078,7 +1099,7 @@ class PromptRewriterZ:
             if needs_restart:
                 print(f"[Prompt Rewriter] {restart_reason}")
                 self.stop_server()
-                success, error_msg = self.start_server(model_to_use, gpu_config, context_size, mmproj_to_use, backend)
+                success, error_msg = self.start_server(model_to_use, gpu_config, context_size, mmproj_to_use, backend, flash_attention)
                 if not success:
                     return (error_msg,)
             else:
